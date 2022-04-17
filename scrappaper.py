@@ -3,12 +3,19 @@
 'ScrapPaper' by M. R. Rafsanjani
 ==========================--======
 
-A web scraping method to extract titles, links and citations from PubMed's and Google's Scholar search results primarily for meta-analysis use.
+A web scraping method to extract titles, links and citations from PubMed's and Google's Scholar search results
+primarily for meta-analysis use.
 Thank you for using, and share the knowledge. Please read disclamer on the origial paper or Github prior use.
-
 Refer the paper for guide and tutorial, and cite if you found this program useful.
-
 Completed on 2022 Feb 13th, Penang, Malaysia.
+
+==================================
+'ScrapPaper' Version modified by Ademir C. Gabardo
+==========================--======
+This modified version was optmized to run in an Apple Mac OSX environment.
+Please refer to the README.md for installing instructions.
+This version also added the number of citations fot the Google Scholar section.
+Completed on 2022 Apr 17
 
 '''
 
@@ -25,23 +32,25 @@ from bs4 import BeautifulSoup
 
 # ===== DEFINE FUNCTIONS =====
 
-search_from, URL_edit= "", ""
+search_from, URL_edit = "", ""
+
 
 def wait():
-	print("Waiting for a few secs...")
-	time.sleep(random.randrange(1, 6))
-	print("Waiting done. Continuing...\n")
+    print("Waiting for a few secs...")
+    time.sleep(random.randrange(1, 4))
+    print("Waiting done. Continuing...\n")
+
 
 def checkPage():
-	global search_from
-	if "scholar.google.com" in URL_input:
-		search_from = "Google Scholar"
-		print("Input is from: Google Scholar.\n")
-	elif "pubmed" in URL_input:
-		search_from = "Pubmed"
-		print("Input is from: PubMed.\n")
-	else:
-		print("Page URL undefined.\n")
+    global search_from
+    if "scholar.google.com" in URL_input:
+        search_from = "Google Scholar"
+        print("Input is from: Google Scholar.\n")
+    elif "pubmed" in URL_input:
+        search_from = "Pubmed"
+        print("Input is from: PubMed.\n")
+    else:
+        print("Page URL undefined.\n")
 
 
 # ===== GETTING AND SETTING THE URL =====
@@ -49,192 +58,187 @@ def checkPage():
 URL_input = input("Please paste search URL and press Enter:")
 URL_ori = URL_input
 headers = requests.utils.default_headers()
+# 'User-Agent': 'Mozilla/15.0 (X11; Ubuntu; Linux x86_64; rv:52.0) Gecko/20210916 Firefox/95.0',
 headers.update({
-    'User-Agent': 'Mozilla/15.0 (X11; Ubuntu; Linux x86_64; rv:52.0) Gecko/20210916 Firefox/95.0',
+    'User-Agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_2) AppleWebKit/601.3.9 (KHTML, like Gecko) Version/9.0.2 Safari/601.3.9'
 })
-checkPage()
 
+checkPage()
 
 # ===== MAIN FRAMEWORK =====
 
 # ===== CODE FOR PUBMED =====
 
 if search_from == "Pubmed":
+    try:
+        # SETTING UP THE CSV FILE
+        outfile = open("scrapped_pubmed.csv", "w", newline='', encoding='utf-8')
+        writer = csv.writer(outfile)
+        df = pd.DataFrame(columns=['Title', 'Links', 'References'])
+        # SETTING & GETTING PAGE NUMBER
+        page_num = 1
+        page_view = 100  # can be change to 10, 20, 50, 100 or 200
+        URL_edit = URL_ori + "&page=" + str(page_num) + "&size=" + str(page_view)
+        print("URL : ", URL_edit)
 
-	try:
+        page = requests.get(URL_edit, headers=headers, timeout=None)
+        soup = BeautifulSoup(page.content, "html.parser")
+        wait()
 
-		# SETTING UP THE CSV FILE
+        page_total = soup.find("label", class_="of-total-pages").text
+        page_total_num = int(''.join(filter(str.isdigit, page_total)))
+        print(f"Total page number: {page_total_num}")
+        print(f"Results per page: {page_view}.\n")
 
-		outfile = open("scrapped_pubmed.csv","w",newline='',encoding='utf-8')
-		writer = csv.writer(outfile)
-		df = pd.DataFrame(columns=['Title','Links','References'])
+    except AttributeError:
 
-		# SETTING & GETTING PAGE NUMBER
+        print("Opss! ReCaptcha is probably preventing the code from running.")
+        print("Please consider running in another time.\n")
+        exit()
 
-		page_num = 1
-		page_view = 100 # can be change to 10, 20, 50, 100 or 200
-		URL_edit = URL_ori + "&page=" + str(page_num) + "&size=" + str(page_view)	
-		print("URL : ", URL_edit)
+    wait()
 
-		page = requests.get(URL_edit, headers=headers, timeout=None)
-		soup = BeautifulSoup(page.content, "html.parser")
-		wait()
+    # EXTRACTING INFORMATION
+    for i in range(page_total_num):
+        page_num_up = page_num + i
+        URL_edit = URL_ori + "&page=" + str(page_num_up) + "&size=" + str(page_view)
+        page = requests.get(URL_edit, headers=headers, timeout=None)
 
-		page_total = soup.find("label", class_="of-total-pages").text
-		page_total_num = int(''.join(filter(str.isdigit, page_total)))
-		print(f"Total page number: {page_total_num}")
-		print(f"Results per page: {page_view}.\n")
+        soup = BeautifulSoup(page.content, "html.parser")
+        wait()
+        results = soup.find("section", class_="search-results-list")
 
-	except AttributeError:
+    try:
+        # EXTRACTING INFORMATION
+        job_elements = results.find_all("article", class_="full-docsum")
 
-		print("Opss! ReCaptcha is probably preventing the code from running.")
-		print("Please consider running in another time.\n")
-		exit()
+        for job_element in job_elements:
+            title_element = job_element.find("a", class_="docsum-title")
+            cit_element = job_element.find("span", class_="docsum-journal-citation full-journal-citation").text.strip()
 
-	wait()
+            links = job_element.find_all("a")
+            for link in links:
+                link_url = link["href"]
 
-	# EXTRACTING INFORMATION
+            title_element_clean = title_element.text.strip()
+            link_url_clean = "https://pubmed.ncbi.nlm.nih.gov" + link_url
 
-	for i in range(page_total_num):
+            print(title_element_clean)
+            print(link_url_clean)
+            print(cit_element)
+            print()
 
-		page_num_up = page_num + i
-		URL_edit = URL_ori + "&page=" + str(page_num_up) + "&size=" + str(page_view)
-		page = requests.get(URL_edit, headers=headers, timeout=None)	
+            df2 = pd.DataFrame([[title_element_clean, link_url_clean, cit_element]],
+                               columns=['Title', 'Links', 'References'])
+            df = pd.concat([df, df2], ignore_index=True)
 
-		soup = BeautifulSoup(page.content, "html.parser")
-		wait()
-		results = soup.find("section", class_="search-results-list")
+        wait()
 
-	try:
+    except AttributeError:
+        print(AttributeError)
+        print("Opss! ReCaptcha is probably preventing the code from running.")
+        print("Please consider running in another time.\n")
+        exit()
 
-		# EXTRACTING INFORMATION	
-
-		job_elements = results.find_all("article", class_="full-docsum")
-
-		for job_element in job_elements:
-			title_element = job_element.find("a", class_="docsum-title")
-			cit_element = job_element.find("span", class_="docsum-journal-citation full-journal-citation").text.strip()
-
-			links = job_element.find_all("a") 
-			for link in links:
-				link_url = link["href"]
-		
-			title_element_clean = title_element.text.strip()
-			link_url_clean = "https://pubmed.ncbi.nlm.nih.gov"+link_url
-
-			print(title_element_clean)
-			print(link_url_clean)
-			print(cit_element)
-			print()
-
-			df2 = pd.DataFrame([[title_element_clean, link_url_clean, cit_element]],columns=['Title','Links','References'])
-			df = pd.concat([df, df2], ignore_index=True)
-
-		wait()
-
-	except AttributeError:
-
-		print("Opss! ReCaptcha is probably preventing the code from running.")
-		print("Please consider running in another time.\n")
-		exit()
-
-	df.index += 1
-	df.to_csv('scrapped_pubmed.csv')
-	outfile.close()
+    df.index += 1
+    df.to_csv('scrapped_pubmed.csv')
+    outfile.close()
 
 
 # ===== CODE FOR GOOGLE SCHOLAR =====
 
 elif search_from == "Google Scholar":
+    try:
+        # SETTING UP THE CSV FILE
+        outfile = open("scrapped_gscholar.csv", "w", newline='', encoding='utf-8')
+        writer = csv.writer(outfile)
+        df = pd.DataFrame(columns=['Title', 'Citations', 'Links', 'References'])
 
-	try:
+        # SETTING & GETTING PAGE NUMBER
+        page_num = 0
+        URL_edit = str(URL_ori + "&start=" + str(page_num))
 
-		# SETTING UP THE CSV FILE
+        page = requests.get(URL_edit, headers=headers, timeout=None)
+        soup = BeautifulSoup(page.content, "html.parser")
+        wait()
 
-		outfile = open("scrapped_gscholar.csv","w",newline='',encoding='utf-8')
-		writer = csv.writer(outfile)
-		df = pd.DataFrame(columns=['Title','Links','References'])
+        search_results = soup.find_all("div", class_="gs_ab_mdw")[1].text
 
-		# SETTING & GETTING PAGE NUMBER
+        if "About" in search_results:
+            search_results_split = search_results.split("results")[0].split("About")[1]
+        elif "results" in search_results:
+            search_results_split = search_results.split("results")[0]
+        else:
+            search_results_split = search_results.split("result")[0]
 
-		page_num = 0
-		URL_edit = str(URL_ori + "&start=" + str(page_num))
+        search_results_num = int(''.join(filter(str.isdigit, search_results_split)))
+        page_total_num = int(search_results_num / 10) + 1
+        print(f"Total page number: {page_total_num}")
+        print(f"Total search results: {search_results_num}.\n")
 
-		page = requests.get(URL_edit, headers=headers, timeout=None)
-		soup = BeautifulSoup(page.content, "html.parser")
-		wait()
+    except AttributeError:
+        print(AttributeError)
+        print("Opss! ReCaptcha is probably preventing the code from running.")
+        print("Please consider running in another time.\n")
+        exit()
 
-		search_results = soup.find_all("div", class_="gs_ab_mdw")[1].text
+    wait()
 
-		if "About" in search_results:
-			search_results_split = search_results.split("results")[0].split("About")[1]
-		elif "results" in search_results:
-			search_results_split = search_results.split("results")[0]
-		else:	
-			search_results_split = search_results.split("result")[0]
+    # EXTRACTING INFORMATION
 
-		search_results_num = int(''.join(filter(str.isdigit, search_results_split)))
-		page_total_num = int(search_results_num / 10) + 1
-		print(f"Total page number: {page_total_num}")
-		print(f"Total search results: {search_results_num}.\n")
+    for i in range(page_total_num): # , page_total_num
 
-	except AttributeError:
+        # SETTING UP URL SECOND TIME
 
-		print("Opss! ReCaptcha is probably preventing the code from running.")
-		print("Please consider running in another time.\n")
-		exit()
+        page_num_up = page_num + i
+        print(f"Going to page {page_num_up}.\n")
+        URL_edit = str(URL_ori + "&start=" + str(page_num_up) + "0")
 
-	wait()
+        headers = requests.utils.default_headers()
+        headers.update({
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_2) AppleWebKit/601.3.9 (KHTML, like Gecko) Version/9.0.2 Safari/601.3.9'
+        })
 
-	# EXTRACTING INFORMATION
+        page = requests.get(URL_edit, headers=headers, timeout=None)
+        soup = BeautifulSoup(page.content, "html.parser")
+        wait()
 
-	for i in range(page_total_num):
+        results = soup.find("div", id="gs_res_ccl_mid")
+        print(results)
+        # EXTRACTING INFORMATION
+        try:
+            job_elements = results.find_all("div", class_="gs_ri")
+            for job_element in job_elements:
+                ref_element = job_element.find("div", class_="gs_a").text
+                cited_by_count = 0
+                try:
+                    thisCount = job_element.select_one('#gs_res_ccl_mid .gs_nph+ a').text.split(' ')[2]
+                    if thisCount.isnumeric():
+                        cited_by_count = thisCount
+                except:
+                    pass
+                links = job_element.find("a")
+                link_url = links["href"]
+                title_element = links.text.strip()
 
-		# SETTING UP URL SECOND TIME
+                print(title_element)
+                print(link_url)
+                print(ref_element)
+                print(cited_by_count)
+                print()
 
-		page_num_up = page_num + i
-		print(f"Going to page {page_num_up}.\n")
-		URL_edit = str(URL_ori + "&start=" + str(page_num_up) + "0")
+                df2 = pd.DataFrame([[title_element, cited_by_count, link_url, ref_element]], columns=['Title', 'Citations', 'Links', 'References'])
+                df = pd.concat([df, df2], ignore_index=True)
 
-		headers = requests.utils.default_headers()
-		headers.update({
-	    	'User-Agent': 'Mozilla/15.0 (X11; Ubuntu; Linux x86_64; rv:52.0) Gecko/20210916 Firefox/95.0',
-			})
-		
-		page = requests.get(URL_edit, headers=headers, timeout=None)
-		soup = BeautifulSoup(page.content, "html.parser")
-		wait()
+        except Exception as e:
+            print(e)
+            print("Opss! ReCaptcha is probably preventing the code from running.")
+            print("Please consider running in another time.\n")
+            exit()
 
-		results = soup.find("div", id="gs_res_ccl_mid")
-		
-		# EXTRACTING INFORMATION
-
-		try:
-
-			job_elements = results.find_all("div", class_="gs_ri")
-			for job_element in job_elements:
-
-				ref_element = job_element.find("div", class_="gs_a").text
-				links = job_element.find("a") 
-				link_url = links["href"]
-				title_element = links.text.strip()
-
-				print(title_element)
-				print(link_url)
-				print(ref_element)
-				print()
-
-				df2 = pd.DataFrame([[title_element, link_url, ref_element]], columns=['Title','Links','References'])
-				df = pd.concat([df, df2], ignore_index=True)
-
-		except AttributeError:
-			print("Opss! ReCaptcha is probably preventing the code from running.")
-			print("Please consider running in another time.\n")
-			exit()
-
-	df.index += 1
-	df.to_csv('scrapped_gscholar.csv',encoding='utf-8')
-	outfile.close()
+    df.index += 1
+    df.to_csv('scrapped_gscholar.csv', encoding='utf-8')
+    outfile.close()
 
 # END OF PROGRAM
 
